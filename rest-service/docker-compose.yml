@@ -1,0 +1,97 @@
+services:
+  db:
+    image: postgres:15
+    container_name: notes-db
+    restart: unless-stopped
+    env_file:
+      - .env.dev
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5433:5432"
+    volumes:
+      - notes_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+
+  db-2:
+    image: postgres:15
+    container_name: notes-db-2
+    restart: unless-stopped
+    env_file:
+      - .env.dev
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5434:5432"
+    volumes:
+      - notes_pgdata_2:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+
+  api-1:
+    build: .
+    container_name: notes-api-1
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env.dev
+    expose:
+      - "8080"
+      - "50051"
+    networks:
+      - backend
+
+  api-2:
+    build: .
+    container_name: notes-api-2
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env.dev
+    expose:
+      - "8080"
+      - "50051"
+    networks:
+      - backend
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: notes-nginx
+    restart: unless-stopped
+    depends_on:
+      - api-1
+      - api-2
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    networks:
+      - backend
+
+volumes:
+  notes_pgdata:
+  notes_pgdata_2:
+
+networks:
+  backend:
