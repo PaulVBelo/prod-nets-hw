@@ -1,0 +1,156 @@
+services:
+
+  # === sharded db ===
+  db:
+    image: postgres:15
+    container_name: mesh-notes-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: notes
+      POSTGRES_PASSWORD: notes
+      POSTGRES_DB: notes
+    ports:
+      - "5533:5432"
+    volumes:
+      - mesh_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notes -d notes"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - mesh
+
+  db-2:
+    image: postgres:15
+    container_name: mesh-notes-db-2
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: notes
+      POSTGRES_PASSWORD: notes
+      POSTGRES_DB: notes
+    ports:
+      - "5534:5432"
+    volumes:
+      - mesh_pgdata_2:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notes -d notes"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - mesh
+
+# === notes-api (1 instance) ===
+
+  notes-api:
+    build:
+      context: ./note-service
+    container_name: mesh-notes-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_PORT: "8080"
+      GRPC_PORT: "50051"
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: notes
+      DB_PASSWORD: notes
+      DB_NAME: notes
+      DB_SSLMODE: disable
+    expose:
+      - "8080"
+      - "50051"
+    networks:
+      - mesh
+
+  notes-sidecar:
+    image: nginx:1.27-alpine
+    container_name: mesh-notes-sidecar
+    restart: unless-stopped
+    depends_on:
+      - notes-api
+    volumes:
+      - ./nginx/notes-sidecar.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    expose:
+      - "443"
+    networks:
+      - mesh
+
+  # === mailer-service + sidecar ===
+
+  mailer-api:
+    build:
+      context: ./mailer-service
+    container_name: mesh-mailer-api
+    restart: unless-stopped
+    depends_on:
+      - notes-sidecar
+      - mailhog
+    environment:
+      APP_PORT: "8080"
+
+      NOTES_BASE_URL: "https://notes-sidecar"
+      NOTES_BASE_PORT: "443"
+      SKIP_TLS_VERIFY: "true"
+
+      SMTP_HOST: "mailhog"
+      SMTP_PORT: "1025"
+      SMTP_FROM: "notes@example.com"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+    expose:
+      - "8080"
+    networks:
+      - mesh
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: mesh-mailhog
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    networks:
+      - mesh
+
+
+  mailer-sidecar:
+    image: nginx:1.27-alpine
+    container_name: mesh-mailer-sidecar
+    restart: unless-stopped
+    depends_on:
+      - mailer-api
+    volumes:
+      - ./nginx/mailer-sidecar.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    expose:
+      - "443"
+    networks:
+      - mesh
+
+  edge-nginx:
+    image: nginx:1.27-alpine
+    container_name: mesh-edge-nginx
+    restart: unless-stopped
+    depends_on:
+      - notes-sidecar
+      - mailer-sidecar
+    volumes:
+      - ./nginx/edge.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    ports:
+      - "8080:80"
+      - "8443:443"
+    networks:
+      - mesh
+
+volumes:
+  mesh_pgdata:
+  mesh_pgdata_2:
+
+networks:
+  mesh:

@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package notes;
+
+option go_package = "notes-service/api/gen;gen";
+
+message Note {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  string created_at = 4;
+  string updated_at = 5;
+}
+
+message CreateNoteRequest {
+  string title = 1;
+  string description = 2;
+}
+
+message NoteResponse {
+  Note note = 1;
+}
+
+message ListNotesRequest {}
+
+message ListNotesResponse {
+  repeated Note notes = 1;
+}
+
+message GetNoteRequest {
+  string id = 1;
+}
+
+message DeleteNoteRequest {
+  string id = 1;
+}
+
+message DeleteNoteResponse {
+  bool ok = 1;
+}
+
+message UpdateNoteDescriptionRequest {
+  string id = 1;
+  string description = 2;
+}
+
+service NotesService {
+  rpc CreateNote (CreateNoteRequest) returns (NoteResponse);
+  rpc ListNotes (ListNotesRequest) returns (ListNotesResponse);
+  rpc GetNote (GetNoteRequest) returns (NoteResponse);
+  rpc DeleteNote (DeleteNoteRequest) returns (DeleteNoteResponse);
+  rpc UpdateNoteDescription (UpdateNoteDescriptionRequest) returns (NoteResponse);
+}
